@@ -4,7 +4,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
 const mysql = require('mysql');
-const helmet=require('helmet')
+
 // Load environment variables
 dotenv.config();
 const _dirname = path.resolve();
@@ -21,7 +21,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.static(path.join(_dirname, "/frontend/dist")));
 app.use(express.urlencoded({ extended: true }));
-app.use(helmet());
+
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({
