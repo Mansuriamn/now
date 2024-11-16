@@ -9,79 +9,26 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Create axios instance with configuration
-  const axiosInstance = axios.create({
-    baseURL: process.env.NODE_ENV === 'production' 
-      ? 'https://funny-Aman.onrender.com'
-      : 'http://localhost:4000',
-    timeout: 15000,
-    headers: {
-      'Cache-Control': 'no-cache',
-      'Pragma': 'no-cache'
-    }
-  });
-
+  // Initialize data from localStorage immediately
   useEffect(() => {
-    // Flag to track component mount status
-    let isMounted = true;
-    const controller = new AbortController();
+    const cachedData = localStorage.getItem('cachedJokes');
+    if (cachedData) {
+      setDt(JSON.parse(cachedData));
+      setLoading(false);
+    }
+  }, []);
 
-    const fetchData = async () => {
-      try {
-        const response = await axiosInstance.get('/post', {
-          signal: controller.signal
-        });
-
-        // Only update state if component is still mounted
-        if (isMounted) {
-          if (response.data && response.data.length > 0) {
-            setDt(response.data);
-            localStorage.setItem('cachedJokes', JSON.stringify(response.data));
-            setError(null);
-          } else {
-            throw new Error('No data received');
-          }
-        }
-      } catch (err) {
-        // Don't update state if request was aborted
-        if (err.name === 'AbortError') {
-          console.log('Request aborted');
-          return;
-        }
-
-        // Only update error state if component is still mounted
-        if (isMounted) {
-          console.error('Error fetching data:', err);
-          const cachedData = localStorage.getItem('cachedJokes');
-          
-          if (cachedData) {
-            setDt(JSON.parse(cachedData));
-            setError('Unable to fetch new data. Showing cached data.');
-          } else {
-            setError('Unable to connect to server. Please try again later.');
-          }
-        }
-      } finally {
-        // Only update loading state if component is still mounted
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
+  // Handle online/offline status
+  useEffect(() => {
     const handleOnline = () => {
-      if (isMounted) {
-        setIsOnline(true);
-        setError(null);
-        fetchData();
-      }
+      setIsOnline(true);
+      setError(null);
+      fetchData();
     };
 
     const handleOffline = () => {
-      if (isMounted) {
-        setIsOnline(false);
-        setError('You are currently offline. Showing cached data.');
-      }
+      setIsOnline(false);
+      setError('You are currently offline. Showing cached data.');
     };
 
     window.addEventListener('online', handleOnline);
@@ -92,27 +39,38 @@ export default function App() {
       fetchData();
     }
 
-    // Cleanup function
     return () => {
-      isMounted = false;
-      controller.abort(); // Abort any pending requests
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []); // Empty dependency array for initial mount only
+  }, []);
 
-  const handleRefresh = async () => {
-    setLoading(true);
+  const fetchData = async () => {
     try {
-      const response = await axiosInstance.get('/post');
+      const response = await axios.get('http://localhost:4000/post', {
+        timeout: 5000,
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+
       if (response.data && response.data.length > 0) {
+        // Update state and cache
         setDt(response.data);
         localStorage.setItem('cachedJokes', JSON.stringify(response.data));
         setError(null);
       }
     } catch (err) {
-      console.error('Error refreshing data:', err);
-      setError('Failed to refresh data. Please try again.');
+      console.error('Error fetching data:', err);
+      const cachedData = localStorage.getItem('cachedJokes');
+      
+      if (cachedData && dt.length === 0) {
+        setDt(JSON.parse(cachedData));
+        setError('Unable to fetch new data. Showing cached data.');
+      } else if (!cachedData && dt.length === 0) {
+        setError('No data available. Please check your connection and try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -122,55 +80,46 @@ export default function App() {
     setCurrentIndex((prevIndex) => (prevIndex + 1) % dt.length);
   };
 
+  if (loading && dt.length === 0) {
+    return (
+      <div className="flex items-center justify-center p-4">
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4">
       {error && (
         <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4">
           {error}
-          <button 
-            onClick={handleRefresh}
-            className="ml-4 text-blue-500 hover:text-blue-700"
-            disabled={loading}
-          >
-            Try Again
-          </button>
         </div>
       )}
-
       {!isOnline && (
         <div className="bg-orange-100 border-l-4 border-orange-500 text-orange-700 p-4 mb-4">
           You are currently offline
         </div>
       )}
 
-      {loading ? (
-        <div className="flex items-center justify-center p-4">
-          <p>Loading...</p>
-        </div>
-      ) : dt.length > 0 ? (
+      {dt.length > 0 ? (
         <div className="container">
           <h2 className="text-xl font-bold">{dt[currentIndex].title}</h2>
           <p className="mt-2">{dt[currentIndex].body}</p>
-          <button 
-            onClick={handleNextJoke} 
-            className="btn mt-4" 
-            id="jokeBtn"
-          >
-            Next joke 😂😂
-          </button>
         </div>
       ) : (
         <div className="text-center p-4">
           <p>No data available</p>
-          <button 
-            onClick={handleRefresh}
-            className="btn mt-4"
-            disabled={loading}
-          >
-            Refresh
-          </button>
         </div>
       )}
+
+      <button 
+        onClick={handleNextJoke} 
+        className="btn" 
+        id="jokeBtn"
+        disabled={dt.length === 0}
+      >
+        Next joke 😂😂
+      </button>
     </div>
   );
 }
